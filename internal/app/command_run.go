@@ -99,6 +99,10 @@ func runExecutionCommand(input *CommandInput) int {
 		}
 	}
 
+	if opts.Backend == backend.NameSBX {
+		return runNativeSBXExecution(input, opts, profile, host, project, validatedDirs, validatedReadonlyDirs, yoloEnabled)
+	}
+
 	resolvedBuildConfig, code := ensureRuntimeImage(input, opts, buildCfg, host, profile)
 	if code != 0 {
 		return code
@@ -239,6 +243,9 @@ func autoBackgroundForIDE(action string, opts model.Options, profile model.Profi
 }
 
 func executionRequiresDocker(action string, opts model.Options) bool {
+	if opts.Backend == backend.NameSBX {
+		return false
+	}
 	if strings.TrimSpace(opts.Backend) != backend.NameQEMU {
 		return true
 	}

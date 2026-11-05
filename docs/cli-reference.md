@@ -268,10 +268,10 @@ List flags (`-p`, `--allow-domain`, `--bridge-port`, `--pass-env`, `--cache-from
 | Flag | Description |
 |------|-------------|
 | `--tool <tool>` | Tool profile to use (asked once on the first interactive session, then the saved choice; run `enclave tools` for the installed list) |
-| `--backend <backend>` | Isolation backend: `auto` (default: docker or podman, whichever is installed), `docker`, `podman`, or experimental `qemu`. Also accepted by engine-using management commands; affects only this invocation. |
+| `--backend <backend>` | Isolation backend: `auto` (default: docker or podman, whichever is installed), `docker`, `podman`, or experimental `qemu`/`sbx`. Also accepted by engine-using management commands; affects only this invocation. |
 | `--name <name>` | Named persistent session |
 | `--background` | Detached background session |
-| `-p <port>` | Publish a container port to the host (container → host, e.g. `-p 3002`). A host port of `0` (e.g. `-p 0:3000`) lets the daemon pick a free host port (Docker only); read it back with `enclave ps --json`. Repeatable, comma-separated; replaces `ports` from config, `+port` adds to it and replaces a configured entry for the same host port |
+| `-p <port>` | Publish a container port to the host (container → host, e.g. `-p 3002`). A host port of `0` (e.g. `-p 0:3000`) lets the backend pick a free host port (Docker, or loopback bindings with native SBX); read it back with `enclave ps --json`. Repeatable, comma-separated; replaces `ports` from config, `+port` adds to it and replaces a configured entry for the same host port |
 | `--bridge-port <port>` | Forward a host port into the container (host → container, repeatable, comma-separated); replaces `bridge_ports` from config, `+port` adds |
 | `--add-dir <path>` | Mount an additional host directory (repeatable, one path per flag, commas are part of the path); adds to `add_dirs` from config |
 | `--add-readonly-dir <path>` | Mount an additional host directory read-only (repeatable, one path per flag); adds to `add_readonly_dirs` from config |
@@ -444,3 +444,12 @@ On Linux, Enclave warns before launch if the guest allocation exceeds the host's
 QEMU sessions use the same persistent stores as Docker sessions (host directories under `~/.local/state/enclave/`): auth credentials, tool config, and persisted env are shared per tool/project, so you can switch between `--backend docker` and `--backend qemu` without re-authenticating.
 
 SIGINT, SIGTERM or SIGHUP aimed at the enclave process, including a closed terminal, kills the VM without a guest shutdown. Enclave itself survives the signal, so file mounts are still written back and credentials synced to the store.
+
+## Native SBX backend
+
+`--backend sbx` selects a native SBX workload with no nested Docker engine or
+Enclave gateway. It supports run, shell, continue/resume, background sessions,
+ps, exec, attach, and stop. Use a stable `--name` to retain the native tool state;
+`--ephemeral` removes a foreground sandbox after exit. SBX supplies effective
+network policy and credential injection. See [SBX](sbx.md) for prerequisites,
+credential consent, and execution options that are intentionally unsupported.

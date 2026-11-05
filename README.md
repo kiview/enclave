@@ -26,6 +26,9 @@ Runtime dependencies:
   [Podman backend](docs/cli-reference.md#podman-backend). Host AppArmor profiles
   can affect binaries inside rootless containers; see
   [AppArmor on rootless Podman](docs/security/rootless.md#apparmor-on-rootless-podman).
+- Alternatively, an installed and authenticated `sbx` CLI for the experimental
+  native SBX backend. SBX owns sandbox governance and credential injection;
+  host Docker is not required. See [Native SBX backend](docs/sbx.md).
 - Git 2.26 or newer is required to read the host identity at session start.
 - Optional: `qemu-system-x86_64` and `cpio` for the experimental `qemu` backend,
   which builds an x86-64 guest and is practical only on x86-64 Linux hosts,
@@ -253,6 +256,21 @@ Sessions require a configured Git author and committer identity, even outside a 
 To use declared env credentials instead, place them in `~/.local/state/enclave/secrets/global.env`. See [Authentication & Secrets](docs/auth.md).
 
 For the full command and flag reference, see [docs/cli-reference.md](docs/cli-reference.md).
+
+## Native SBX runtime
+
+Run Enclave's tool environment directly in an SBX-managed sandbox:
+
+```bash
+enclave --backend sbx --tool codex --name work
+enclave shell --backend sbx --tool codex --features golang-dev --name dev
+```
+
+Enclave composes the tools, features, settings, and skills. SBX supplies isolation,
+policy enforcement, and host-side credential injection. There is no Docker
+engine or Enclave gateway inside the workload. Existing SBX governance remains
+authoritative; Enclave's declared domains are requests, not a separate allowlist.
+See [Native SBX backend](docs/sbx.md) for credential setup and supported scope.
 
 ## Custom Commands
 

@@ -671,3 +671,19 @@ Allowed types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `build`, `ci`
 ## Work Tracking
 
 Work is tracked via GitHub Issues.
+
+### Native SBX backend development
+
+`internal/app/sbx_native.go` and `internal/runtime/native.go` prepare public
+session inputs without Docker preflight, Enclave auth stores, or a gateway.
+`internal/app/sbx_kit.go` reuses tool/feature build recipes;
+`internal/sbxkit` renders native workload policy and credential capabilities.
+`internal/backend/sbx` owns native lifecycle, exact-ID checks, public config
+seeding, and direct execution through the installed CLI. SBX builds workload
+images in its managed builder; no engine runs inside the resulting workload.
+
+Keep native credential declarations value-free. Verify injection using a
+synthetic host endpoint, sibling sandbox isolation, revocation without restart,
+and guest checks for sentinels and absence of an inner engine. Unit tests of
+CLI arguments do not establish those security properties. Use an isolated
+application namespace and credential-binding directory. See [SBX](sbx.md).

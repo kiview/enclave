@@ -25,6 +25,7 @@ const (
 	NameDocker = "docker"
 	NamePodman = "podman"
 	NameQEMU   = "qemu"
+	NameSBX    = "sbx"
 )
 
 type NetworkMode string
@@ -71,6 +72,7 @@ type Request struct {
 	AuthSync *AuthSyncSpec
 
 	RuntimeUIDRemap bool
+	Ephemeral       bool
 	Detached        bool
 }
 

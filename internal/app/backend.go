@@ -18,6 +18,7 @@ import (
 	"enclave/internal/backend"
 	backenddocker "enclave/internal/backend/docker"
 	backendqemu "enclave/internal/backend/qemu"
+	backendsbx "enclave/internal/backend/sbx"
 	"enclave/internal/cli"
 	"enclave/internal/config"
 	"enclave/internal/docker"
@@ -59,6 +60,15 @@ func selectBackend(opts model.Options, dockerOpts backenddocker.Options) (backen
 	case backend.NameDocker, backend.NamePodman:
 		dockerOpts.Engine = name
 		return backenddocker.New(dockerOpts), nil
+	case backend.NameSBX:
+		if dockerOpts.Host.Home == "" {
+			home, err := config.ResolveHostHome()
+			if err != nil {
+				return nil, err
+			}
+			dockerOpts.Host.Home = home
+		}
+		return backendsbx.New(backendsbx.Options{Host: dockerOpts.Host, Paths: dockerOpts.Paths}), nil
 	case backend.NameQEMU:
 		return backendqemu.New(qemuBackendOptions(dockerOpts.Host, dockerOpts.Paths)), nil
 	default:
@@ -68,10 +78,10 @@ func selectBackend(opts model.Options, dockerOpts backenddocker.Options) (backen
 
 func validateBackendName(name string) error {
 	switch name {
-	case backend.NameDocker, backend.NamePodman, backend.NameQEMU:
+	case backend.NameDocker, backend.NamePodman, backend.NameQEMU, backend.NameSBX:
 		return nil
 	default:
-		return fmt.Errorf("unsupported backend %q (available: %s, %s, %s)", name, backend.NameDocker, backend.NamePodman, backend.NameQEMU)
+		return fmt.Errorf("unsupported backend %q (available: %s, %s, %s, %s)", name, backend.NameDocker, backend.NamePodman, backend.NameQEMU, backend.NameSBX)
 	}
 }
 
@@ -108,6 +118,11 @@ func promptAllowed(parsed cli.Result) bool {
 // the global config is the configured value from then on.
 func resolveActionBackend(action string, opts *model.Options, interactive bool) (string, error) {
 	configured := opts.Backend
+	if opts.Backend == backend.NameSBX {
+		if err := validateNativeSBXAction(action); err != nil {
+			return configured, err
+		}
+	}
 	if actionUsesBackend(action) {
 		if saved := resolveBackend(opts, interactive); saved != "" {
 			configured = saved
