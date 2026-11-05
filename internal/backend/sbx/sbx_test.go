@@ -422,3 +422,58 @@ func TestLifecycleExecUsesNativeCredentialAndTrustWrapper(t *testing.T) {
 		t.Fatalf("wrapped execs=%d calls=%v", wrapped, fake.calls)
 	}
 }
+
+func TestSessionDisplayNameIsSeparateFromNativeReference(t *testing.T) {
+	b, fake, req := fakeBackend(t)
+	req.Session.DisplayName = "my-task"
+	if _, err := b.Run(context.Background(), req, backend.AttachIO{}); err != nil {
+		t.Fatal(err)
+	}
+	sessions, err := b.List(context.Background(), backend.SessionFilter{ExactName: req.Session.Name})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 || sessions[0].Name != "my-task" || sessions[0].Ref.Name != req.Session.Name {
+		t.Fatalf("sessions=%+v", sessions)
+	}
+	prefixed, err := b.List(context.Background(), backend.SessionFilter{NamePrefix: "enclave-codex-"})
+	if err != nil || len(prefixed) != 1 {
+		t.Fatalf("physical prefix filter sessions=%+v err=%v", prefixed, err)
+	}
+	ref := backend.SessionRef{Name: req.Session.Name}
+	session, err := b.Inspect(context.Background(), ref)
+	if err != nil || session.Name != "my-task" || session.Ref.Name != req.Session.Name {
+		t.Fatalf("inspect=%+v err=%v", session, err)
+	}
+	fake.calls = nil
+	if err := b.Exec(context.Background(), ref, backend.ExecRequest{Argv: []string{"display-proof"}}, backend.AttachIO{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.ExecOutput(context.Background(), ref, []string{"display-proof"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Stop(context.Background(), ref, backend.StopOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Remove(context.Background(), ref); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range fake.calls {
+		for _, arg := range args {
+			if arg == "my-task" {
+				t.Fatalf("display name used as native selector: %v", args)
+			}
+		}
+	}
+}
+func TestUnnamedSessionKeepsEmptyDisplayName(t *testing.T) {
+	b, _, req := fakeBackend(t)
+	req.Session.DisplayName = ""
+	if _, err := b.Run(context.Background(), req, backend.AttachIO{}); err != nil {
+		t.Fatal(err)
+	}
+	sessions, err := b.List(context.Background(), backend.SessionFilter{})
+	if err != nil || len(sessions) != 1 || sessions[0].Name != "" {
+		t.Fatalf("sessions=%+v err=%v", sessions, err)
+	}
+}

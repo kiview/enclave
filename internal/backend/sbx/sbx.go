@@ -571,11 +571,11 @@ func (b *Backend) List(ctx context.Context, filter backend.SessionFilter) ([]bac
 				status = "exited"
 			}
 		}
-		session := backend.Session{Ref: backend.SessionRef{Name: row.Name, ID: row.ID}, Tool: record.Meta.Tool, ProjectHash: record.Meta.ProjectHash, Worktree: record.Meta.Worktree, ProjectDir: record.Project, Name: row.Name, Status: status, CreatedAt: row.CreatedAt, Background: record.Meta.Background, Yolo: record.Meta.Yolo, Provenance: record.Meta.Provenance}
+		session := backend.Session{Ref: backend.SessionRef{Name: row.Name, ID: row.ID}, Tool: record.Meta.Tool, ProjectHash: record.Meta.ProjectHash, Worktree: record.Meta.Worktree, ProjectDir: record.Project, Name: record.Meta.DisplayName, Status: status, CreatedAt: row.CreatedAt, Background: record.Meta.Background, Yolo: record.Meta.Yolo, Provenance: record.Meta.Provenance}
 		for _, port := range row.Ports {
 			session.Ports = append(session.Ports, backend.PortMapping{HostIP: port.HostIP, HostPort: strconv.Itoa(port.HostPort), ContainerPort: strconv.Itoa(port.SandboxPort), Protocol: portProtocol(port.Protocol)})
 		}
-		if filter.Tool != "" && session.Tool != filter.Tool || filter.ProjectHash != "" && session.ProjectHash != filter.ProjectHash || filter.ExactName != "" && session.Name != filter.ExactName || filter.NamePrefix != "" && !strings.HasPrefix(session.Name, filter.NamePrefix) || filter.RunningOnly && status != "running" || filter.Background != nil && *filter.Background != session.Background {
+		if filter.Tool != "" && session.Tool != filter.Tool || filter.ProjectHash != "" && session.ProjectHash != filter.ProjectHash || filter.ExactName != "" && session.Ref.Name != filter.ExactName || filter.NamePrefix != "" && !strings.HasPrefix(session.Ref.Name, filter.NamePrefix) || filter.RunningOnly && status != "running" || filter.Background != nil && *filter.Background != session.Background {
 			continue
 		}
 		sessions = append(sessions, session)
@@ -588,7 +588,7 @@ func (b *Backend) Inspect(ctx context.Context, ref backend.SessionRef) (*backend
 		return nil, err
 	}
 	for _, session := range sessions {
-		if (ref.Name != "" && session.Name == ref.Name || ref.Name == "" && ref.ID != "" && session.Ref.ID == ref.ID) && (ref.ID == "" || ref.ID == session.Ref.ID) {
+		if (ref.Name != "" && session.Ref.Name == ref.Name || ref.Name == "" && ref.ID != "" && session.Ref.ID == ref.ID) && (ref.ID == "" || ref.ID == session.Ref.ID) {
 			return &session, nil
 		}
 	}
@@ -618,7 +618,7 @@ func (b *Backend) Exec(ctx context.Context, ref backend.SessionRef, req backend.
 	if err != nil {
 		return err
 	}
-	args := execArgs(session.Name, backend.Request{Argv: nativeCommand(req.Argv), User: req.User}, req.TTY, attach.In != nil)
+	args := execArgs(session.Ref.Name, backend.Request{Argv: nativeCommand(req.Argv), User: req.User}, req.TTY, attach.In != nil)
 	if attach.DetachKeys != "" {
 		args = append([]string{"exec", "--detach-keys", attach.DetachKeys}, args[1:]...)
 	}
@@ -636,7 +636,7 @@ func (b *Backend) ExecOutput(ctx context.Context, ref backend.SessionRef, argv [
 	if err != nil {
 		return "", err
 	}
-	output, err := b.capture(ctx, execArgs(session.Name, backend.Request{Argv: nativeCommand(argv), User: user}, false, false)...)
+	output, err := b.capture(ctx, execArgs(session.Ref.Name, backend.Request{Argv: nativeCommand(argv), User: user}, false, false)...)
 	return string(output), err
 }
 func (b *Backend) Stop(ctx context.Context, ref backend.SessionRef, _ backend.StopOptions) error {
@@ -644,49 +644,49 @@ func (b *Backend) Stop(ctx context.Context, ref backend.SessionRef, _ backend.St
 	if err != nil {
 		return err
 	}
-	unlock, err := b.lock(session.Name)
+	unlock, err := b.lock(session.Ref.Name)
 	if err != nil {
 		return err
 	}
 	defer unlock()
-	current, checkErr := b.lookup(ctx, session.Name)
+	current, checkErr := b.lookup(ctx, session.Ref.Name)
 	if checkErr != nil {
 		return checkErr
 	}
 	if current == nil || current.ID != session.Ref.ID {
 		return errors.New("native SBX identity changed before stop")
 	}
-	if _, err = b.capture(ctx, "stop", session.Name); err != nil {
+	if _, err = b.capture(ctx, "stop", session.Ref.Name); err != nil {
 		return err
 	}
-	record, err := b.owner(session.Name)
+	record, err := b.owner(session.Ref.Name)
 	if err != nil {
 		return err
 	}
 	record.Active = false
-	return b.save(session.Name, record)
+	return b.save(session.Ref.Name, record)
 }
 func (b *Backend) Remove(ctx context.Context, ref backend.SessionRef) error {
 	session, err := b.Inspect(ctx, ref)
 	if err != nil {
 		return err
 	}
-	unlock, err := b.lock(session.Name)
+	unlock, err := b.lock(session.Ref.Name)
 	if err != nil {
 		return err
 	}
 	defer unlock()
-	current, checkErr := b.lookup(ctx, session.Name)
+	current, checkErr := b.lookup(ctx, session.Ref.Name)
 	if checkErr != nil {
 		return checkErr
 	}
 	if current == nil || current.ID != session.Ref.ID {
 		return errors.New("native SBX identity changed before removal")
 	}
-	if _, err = b.capture(ctx, "rm", "--force", session.Name); err != nil {
+	if _, err = b.capture(ctx, "rm", "--force", session.Ref.Name); err != nil {
 		return err
 	}
-	return os.Remove(b.ownerPath(session.Name))
+	return os.Remove(b.ownerPath(session.Ref.Name))
 }
 
 var _ backend.Backend = (*Backend)(nil)
