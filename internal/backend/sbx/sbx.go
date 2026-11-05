@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -502,7 +503,7 @@ func (b *Backend) Run(ctx context.Context, req backend.Request, attach backend.A
 	if attach.OnStarted != nil {
 		attach.OnStarted()
 	}
-	args := execArgs(name, req, attach.TTY, attach.In != nil)
+	args := execArgs(name, req, attach.TTY, nativeInputAttached(attach.In))
 	if attach.DetachKeys != "" {
 		args = append([]string{"exec", "--detach-keys", attach.DetachKeys}, args[1:]...)
 	}
@@ -609,7 +610,7 @@ func (b *Backend) Exec(ctx context.Context, ref backend.SessionRef, req backend.
 	if err != nil {
 		return err
 	}
-	args := execArgs(session.Ref.Name, backend.Request{Argv: nativeCommand(req.Argv), User: req.User}, req.TTY, attach.In != nil)
+	args := execArgs(session.Ref.Name, backend.Request{Argv: nativeCommand(req.Argv), User: req.User}, req.TTY, nativeInputAttached(attach.In))
 	if attach.DetachKeys != "" {
 		args = append([]string{"exec", "--detach-keys", attach.DetachKeys}, args[1:]...)
 	}
@@ -728,3 +729,24 @@ const nativeConfigSeedScript = `set -eu
   done
  ' sh "$1" "$target" {} +
  cp -R "$1"/. "$target"/`
+
+// A detached caller often inherits /dev/null. Forwarding its immediate EOF
+// through SBX's interactive stream can discard delayed command output.
+func nativeInputAttached(reader io.Reader) bool {
+	if reader == nil {
+		return false
+	}
+	file, ok := reader.(*os.File)
+	if !ok {
+		return true
+	}
+	inputInfo, err := file.Stat()
+	if err != nil {
+		return true
+	}
+	nullInfo, err := os.Stat(os.DevNull)
+	if err != nil {
+		return true
+	}
+	return !os.SameFile(inputInfo, nullInfo)
+}

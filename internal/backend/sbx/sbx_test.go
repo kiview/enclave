@@ -549,3 +549,88 @@ func TestNativeConfigSeedRejectsTouchedDestinationSymlink(t *testing.T) {
 		})
 	}
 }
+
+func TestDefaultNativeInputSkipsDevNullAndPreservesPipes(t *testing.T) {
+	null, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = null.Close() }()
+	if nativeInputAttached(null) {
+		t.Fatal("implicitly forwards immediate dev-null EOF")
+	}
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = reader.Close() }()
+	defer func() { _ = writer.Close() }()
+	if !nativeInputAttached(reader) {
+		t.Fatal("discarded real pipe input")
+	}
+}
+func TestExecDoesNotForwardDevNullEOF(t *testing.T) {
+	b, _, req := fakeBackend(t)
+	if _, err := b.Run(context.Background(), req, backend.AttachIO{}); err != nil {
+		t.Fatal(err)
+	}
+	null, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = null.Close() }()
+	previous := b.command
+	found := false
+	b.command = func(ctx context.Context, args []string, attach backend.AttachIO) error {
+		if args[0] == "exec" && args[len(args)-1] == "explicit-input-proof" {
+			found = true
+			interactive := false
+			for _, arg := range args {
+				if arg == "-i" {
+					interactive = true
+				}
+			}
+			if interactive || attach.In != null {
+				t.Fatal("forwarded dev-null EOF as interactive input")
+			}
+		}
+		return previous(ctx, args, attach)
+	}
+	if err := b.Exec(context.Background(), backend.SessionRef{Name: req.Session.Name}, backend.ExecRequest{Argv: []string{"explicit-input-proof"}}, backend.AttachIO{In: null}); err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("no explicit-input exec")
+	}
+}
+
+func TestRunOmitsInteractiveFlagForDevNull(t *testing.T) {
+	b, _, req := fakeBackend(t)
+	null, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = null.Close() }()
+	previous := b.command
+	found := false
+	b.command = func(ctx context.Context, args []string, attach backend.AttachIO) error {
+		if args[0] == "exec" && args[len(args)-1] == "argument with spaces" {
+			found = true
+			for _, arg := range args {
+				if arg == "-i" {
+					t.Fatal("foreground run forwards dev-null EOF")
+				}
+			}
+			if attach.In != null {
+				t.Fatal("foreground run replaced caller stdin")
+			}
+		}
+		return previous(ctx, args, attach)
+	}
+	if _, err := b.Run(context.Background(), req, backend.AttachIO{In: null}); err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatal("no foreground run")
+	}
+}
