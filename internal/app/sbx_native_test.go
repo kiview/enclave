@@ -8,6 +8,7 @@
 package app
 
 import (
+	"context"
 	"testing"
 
 	"enclave/internal/backend"
@@ -49,6 +50,40 @@ func TestNativeSBXGatewayAndAuthActionsFailBeforeDispatch(t *testing.T) {
 		opts.Backend = backend.NameSBX
 		if _, err := resolveActionBackend(action, &opts, false); err == nil {
 			t.Fatalf("unsupported %s action accepted", action)
+		}
+	}
+}
+
+func TestNativeSBXListingDoesNotCheckDocker(t *testing.T) {
+	oldCheck, oldList := psCheckDocker, psSessionList
+	t.Cleanup(func() { psCheckDocker = oldCheck; psSessionList = oldList })
+	psCheckDocker = func() error { t.Fatal("native listing called Docker preflight"); return nil }
+	listed := false
+	psSessionList = func(_ context.Context, opts model.Options) ([]backend.Session, error) {
+		listed = true
+		if opts.Backend != backend.NameSBX {
+			t.Fatal("native backend lost")
+		}
+		return nil, nil
+	}
+	opts := config.DefaultOptions()
+	opts.Backend = backend.NameSBX
+	opts.PSJSON = true
+	captureOutput(t, func() {
+		if code := runPS(opts); code != 0 {
+			t.Fatalf("native listing exit %d", code)
+		}
+	})
+	if !listed {
+		t.Fatal("native backend was not queried")
+	}
+}
+func TestNativeSBXExecutionActionsNeverRequireDocker(t *testing.T) {
+	opts := config.DefaultOptions()
+	opts.Backend = backend.NameSBX
+	for _, action := range []string{"run", "shell", "continue", "resume", "exec"} {
+		if executionRequiresDocker(action, opts) {
+			t.Fatalf("native %s requires Docker", action)
 		}
 	}
 }

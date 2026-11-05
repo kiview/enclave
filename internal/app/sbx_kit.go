@@ -161,7 +161,7 @@ fi
 	if err != nil {
 		return "", err
 	}
-	target := filepath.Join(cache, digest)
+	target := filepath.Join(cache, "enclave-"+digest)
 	if _, err = os.Stat(target); err == nil {
 		return target, nil
 	}

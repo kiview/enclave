@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -41,6 +42,11 @@ func TestPrepareSBXKitComposesPublicNativeArtifactWithoutDocker(t *testing.T) {
 	kit, err := prepareSBXKit(input, opts, profile, host, req)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// SBX infers a local kit's agent handle from its directory name and
+	// requires a leading letter; an unprefixed digest can start with a digit.
+	if !regexp.MustCompile(`^[a-z][a-z0-9-]*$`).MatchString(filepath.Base(kit)) {
+		t.Fatalf("native kit has invalid SBX agent handle: %s", filepath.Base(kit))
 	}
 	for _, file := range []string{"extensions/tools/codex/spec.yaml", "extensions/features/github-cli/spec.yaml", "native-env.sh", "entrypoint.sh"} {
 		assertPathExists(t, filepath.Join(kit, file))
