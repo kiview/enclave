@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -475,5 +476,76 @@ func TestUnnamedSessionKeepsEmptyDisplayName(t *testing.T) {
 	sessions, err := b.List(context.Background(), backend.SessionFilter{})
 	if err != nil || len(sessions) != 1 || sessions[0].Name != "" {
 		t.Fatalf("sessions=%+v err=%v", sessions, err)
+	}
+}
+
+func TestNativeConfigSeedPreservesUnrelatedCodexSymlinks(t *testing.T) {
+	source := t.TempDir()
+	target, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "config.toml"), []byte("model = 'updated'\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	temp := filepath.Join(target, "tmp", "arg0-linux", "codex-arg0")
+	if err := os.MkdirAll(temp, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(temp, "apply_patch")
+	if err := os.Symlink("/usr/local/bin/codex", link); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command("sh", "-c", nativeConfigSeedScript, "sh", source, target)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("seed rejected unrelated Codex state: %v: %s", err, output)
+	}
+	if _, err := os.Readlink(link); err != nil {
+		t.Fatalf("Codex temporary symlink lost: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(target, "config.toml"))
+	if err != nil || !strings.Contains(string(data), "updated") {
+		t.Fatalf("settings=%q err=%v", data, err)
+	}
+}
+func TestNativeConfigSeedRejectsTouchedDestinationSymlink(t *testing.T) {
+	for _, nested := range []bool{false, true} {
+		t.Run(strconv.FormatBool(nested), func(t *testing.T) {
+			source := t.TempDir()
+			target, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			outside := t.TempDir()
+			victim := filepath.Join(outside, "config.toml")
+			if err := os.WriteFile(victim, []byte("unchanged"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			destination := filepath.Join(target, "config.toml")
+			src := filepath.Join(source, "config.toml")
+			linked := victim
+			if nested {
+				destination = filepath.Join(target, "settings")
+				src = filepath.Join(source, "settings", "config.toml")
+				linked = outside
+				if err := os.MkdirAll(filepath.Dir(src), 0o700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.WriteFile(src, []byte("must-not-write"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(linked, destination); err != nil {
+				t.Fatal(err)
+			}
+			command := exec.Command("sh", "-c", nativeConfigSeedScript, "sh", source, target)
+			if output, err := command.CombinedOutput(); err == nil {
+				t.Fatalf("seed followed destination symlink: %s", output)
+			}
+			data, err := os.ReadFile(victim)
+			if err != nil || string(data) != "unchanged" {
+				t.Fatalf("outside config modified: %q %v", data, err)
+			}
+		})
 	}
 }

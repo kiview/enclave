@@ -432,16 +432,7 @@ func (b *Backend) seedConfig(ctx context.Context, name string) (retErr error) {
 	if _, err = strconv.ParseUint(gid, 10, 32); err != nil {
 		return err
 	}
-	_, err = b.capture(ctx, "exec", "-u", uid+":"+gid, name, "sh", "-c", `set -eu
- target=$2
- parent=$target
- while [ "$parent" != / ]; do
-  if [ -L "$parent" ]; then printf 'Refusing symlinked native config path: %s\n' "$parent" >&2; exit 1; fi
-  parent=$(dirname "$parent")
- done
- mkdir -p "$target"
- if [ -n "$(find "$target" -type l -print -quit)" ]; then printf 'Refusing symlinked native config contents: %s\n' "$target" >&2; exit 1; fi
- cp -R "$1"/. "$target"/`, "sh", seed, target)
+	_, err = b.capture(ctx, "exec", "-u", uid+":"+gid, name, "sh", "-c", nativeConfigSeedScript, "sh", seed, target)
 
 	return err
 }
@@ -715,3 +706,25 @@ func nativeCommand(argv []string) []string {
 	}
 	return append([]string{wrapper}, argv...)
 }
+
+const nativeConfigSeedScript = `set -eu
+ target=$2
+ parent=$target
+ while [ "$parent" != / ]; do
+  if [ -L "$parent" ]; then printf 'Refusing symlinked native config path: %s\n' "$parent" >&2; exit 1; fi
+  parent=$(dirname "$parent")
+ done
+ mkdir -p "$target"
+ find "$1" -mindepth 1 -exec sh -c '
+  source=$1 target=$2
+  shift 2
+  for file; do
+   relative=${file#"$source"/}
+   destination=$target/$relative
+   while [ "$destination" != "$target" ]; do
+    if [ -L "$destination" ]; then printf "Refusing symlinked native config destination: %s\n" "$destination" >&2; exit 1; fi
+    destination=$(dirname "$destination")
+   done
+  done
+ ' sh "$1" "$target" {} +
+ cp -R "$1"/. "$target"/`
