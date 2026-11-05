@@ -152,6 +152,39 @@ fi
 	}
 	aliasScript.WriteString("exec \"$@\"\n")
 	recipe += "USER root\nCOPY native-env.sh /usr/local/bin/enclave-native-env\nRUN chmod 0755 /usr/local/bin/enclave-native-env\nUSER agent\n"
+	// Native mount provisioning can create missing parent directories as root.
+	// Prepare only guest-home destinations while the image is still trusted.
+	homeDirs := map[string]bool{}
+	if profile.ConfigDir != "" {
+		target := profile.ConfigDir
+		if !filepath.IsAbs(target) {
+			target = filepath.Join("/home/agent", target)
+		}
+		if util.PathWithin("/home/agent", target) {
+			homeDirs[filepath.Clean(target)] = true
+		}
+	}
+	for _, mount := range req.Mounts {
+		target := filepath.Clean(mount.ContainerPath)
+		if util.PathWithin("/home/agent", target) {
+			homeDirs[filepath.Dir(target)] = true
+		}
+	}
+	destinations := make([]string, 0, len(homeDirs))
+	for target := range homeDirs {
+		if util.PathWithin("/home/agent", target) {
+			destinations = append(destinations, target)
+		}
+	}
+	sort.Strings(destinations)
+	if len(destinations) > 0 {
+		quoted := make([]string, 0, len(destinations))
+		for _, target := range destinations {
+			quoted = append(quoted, util.ShellQuote(filepath.ToSlash(target)))
+		}
+		recipe += "USER root\nRUN mkdir -p -- " + strings.Join(quoted, " ") + " && chown -R agent:agent /home/agent\nUSER agent\n"
+	}
+
 	for name, data := range map[string]string{"enclave.yaml": string(descriptor), "enclave.dockerfile": recipe, "native-env.sh": aliasScript.String()} {
 		if err = os.WriteFile(filepath.Join(dir, name), []byte(data), 0600); err != nil {
 			return "", err

@@ -38,7 +38,7 @@ func TestPrepareSBXKitComposesPublicNativeArtifactWithoutDocker(t *testing.T) {
 	opts.Features = []string{"github-cli"}
 	host := model.Host{Home: t.TempDir()}
 	input := &CommandInput{Ctx: NewAppContext(paths, t.TempDir())}
-	req := backend.Request{Network: backend.NetworkPolicy{Mode: backend.NetworkModeRestricted, Egress: backend.EgressPolicy{AllowedDomains: []string{"api.openai.com"}}}}
+	req := backend.Request{Mounts: []backend.Mount{{Type: backend.MountTypeBind, Source: "/host/native-mount-source-must-not-enter-kit", ContainerPath: "/home/agent/.nvm/versions"}}, Network: backend.NetworkPolicy{Mode: backend.NetworkModeRestricted, Egress: backend.EgressPolicy{AllowedDomains: []string{"api.openai.com"}}}}
 	kit, err := prepareSBXKit(input, opts, profile, host, req)
 	if err != nil {
 		t.Fatal(err)
@@ -66,6 +66,14 @@ func TestPrepareSBXKitComposesPublicNativeArtifactWithoutDocker(t *testing.T) {
 	}
 	if !strings.Contains(string(recipe), "# feature: github-cli") || !strings.Contains(string(recipe), `ENTRYPOINT ["/usr/bin/env"]`) {
 		t.Fatalf("native recipe lost composition: %s", recipe)
+	}
+	for _, target := range []string{"/home/agent/.codex", "/home/agent/.nvm", "chown -R agent:agent /home/agent"} {
+		if !strings.Contains(string(recipe), target) {
+			t.Fatalf("native image omitted agent-owned directory setup %s", target)
+		}
+	}
+	if strings.Contains(string(recipe), "/host/native-mount-source-must-not-enter-kit") {
+		t.Fatal("host mount source leaked into native image recipe")
 	}
 	err = filepath.WalkDir(kit, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
