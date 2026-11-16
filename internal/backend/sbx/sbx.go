@@ -99,7 +99,7 @@ func (b *Backend) execute(ctx context.Context, args []string, attach backend.Att
 	if b.opts.AppName != "" {
 		prefix = append(prefix, "--app-name", b.opts.AppName)
 	}
-	cmd := exec.CommandContext(ctx, b.opts.Binary, append(prefix, args...)...)
+	cmd := exec.CommandContext(ctx, b.opts.Binary, append(prefix, args...)...) // #nosec G204 -- the configured sbx executable with an argument vector, no shell.
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = attach.In, attach.Out, attach.Err
 	cmd.Env = attach.CommandEnv()
 	if len(args) > 0 && args[0] == "create" {

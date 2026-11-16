@@ -169,7 +169,7 @@ func scrubNativeConfig(root string, denied []string) error {
 			pattern = strings.TrimSuffix(filepath.ToSlash(pattern), "/")
 			match, _ := filepath.Match(pattern, relative)
 			if match || relative == pattern || strings.HasPrefix(relative, pattern+"/") {
-				if err := os.RemoveAll(path); err != nil {
+				if err := os.RemoveAll(path); err != nil { // #nosec G122 -- root is Enclave's 0700 generated config dir, rebuilt under the tool-data lock and never guest-writable; WalkDir does not follow symlinks.
 					return err
 				}
 				if entry.IsDir() {

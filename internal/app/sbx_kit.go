@@ -219,17 +219,18 @@ func nativeEnvName(name string) bool {
 	return true
 }
 func nativeKitHash(root string) (string, error) {
+	kit, err := os.OpenRoot(root)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = kit.Close() }()
 	hash := sha256.New()
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+	err = fs.WalkDir(kit.FS(), ".", func(rel string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
 		if entry.IsDir() {
 			return nil
-		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
 		}
 		info, err := entry.Info()
 		if err != nil {
@@ -238,8 +239,8 @@ func nativeKitHash(root string) (string, error) {
 		if !info.Mode().IsRegular() {
 			return fmt.Errorf("unsupported native kit input %s", rel)
 		}
-		_, _ = fmt.Fprintf(hash, "%s\x00%d\x00", filepath.ToSlash(rel), info.Mode().Perm())
-		f, err := os.Open(path)
+		_, _ = fmt.Fprintf(hash, "%s\x00%d\x00", rel, info.Mode().Perm())
+		f, err := kit.Open(filepath.FromSlash(rel))
 		if err != nil {
 			return err
 		}
