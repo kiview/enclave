@@ -1,6 +1,6 @@
 # Architecture
 
-Enclave is a sandboxing CLI that bootstraps isolated agent tooling in Docker containers by default, with an experimental QEMU microVM backend for a narrow foreground run path, while persisting only the data you choose (host-directory stores, caches, history). The Go code is organized under `internal/` as small, focused packages with a thin CLI entrypoint in `cmd/`.
+Enclave is a sandboxing CLI that bootstraps isolated agent tooling in Docker containers by default, with an experimental QEMU microVM backend for a narrow foreground run path and a native SBX backend, while persisting only the data you choose (host-directory stores, caches, history). The Go code is organized under `internal/` as small, focused packages with a thin CLI entrypoint in `cmd/`.
 
 ## High-Level Flow
 
@@ -25,6 +25,30 @@ Enclave is a sandboxing CLI that bootstraps isolated agent tooling in Docker con
    fails if they are missing (use it for offline/frozen inputs).
 4. Prepare mounts, persistent stores, auth, and network isolation.
 5. Run the tool or shell inside an ephemeral container.
+
+### Native SBX execution
+
+The native path reuses Enclave's tool/feature image recipe and public settings
+composition, but bypasses Docker preflight, host auth stores, and the Enclave
+gateway. `internal/sbxkit` renders a native workload; `internal/backend/sbx`
+creates one owned sandbox per session and executes the tool directly. SBX
+retains its existing policy and credential-consent authority.
+
+```mermaid
+flowchart LR
+    Enclave["Enclave profiles, features, settings"] --> Kit["Native SBX workload kit"]
+    Kit --> Builder["SBX managed image builder"]
+    Builder --> Workload["Direct tool process in SBX sandbox"]
+    Project["Explicit host project/state shares"] --> Workload
+    Workload --> Gateway["SBX policy and injection gateway"]
+    Secrets["Host-side SBX credential store"] --> Gateway
+    Governance["SBX user / organization governance"] --> Gateway
+    Gateway --> Services["Permitted external services"]
+```
+
+The workload receives credential sentinels rather than secret values. Its
+network declarations request access under SBX policy; they do not create an
+independent Enclave allowlist boundary. See [Native SBX](sbx.md).
 
 ## Diagrams
 

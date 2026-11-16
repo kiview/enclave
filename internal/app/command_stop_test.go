@@ -171,3 +171,15 @@ func (b *stopTestBackend) RemoveWithoutFinalize(context.Context, backend.Session
 	b.forceRemoveCalled = true
 	return nil
 }
+
+// Native storage belongs to SBX and must survive an ordinary stop.
+type nativeStopTestBackend struct{ stopTestBackend }
+
+func (b *nativeStopTestBackend) Name() string { return backend.NameSBX }
+func TestStopNativeRetainsSandbox(t *testing.T) {
+	be := &nativeStopTestBackend{}
+	stopContainer(be, "native-session")
+	if !be.stopCalled || be.forceRemoveCalled || be.strictRemoveCalled {
+		t.Fatalf("native stop removed persistent sandbox: %+v", be)
+	}
+}

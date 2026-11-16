@@ -12,6 +12,7 @@
 
 ## Developer Documentation
 
+- [sbx.md](sbx.md) — Native SBX runtime, policy authority, and credentials
 - [ARCHITECTURE.md](ARCHITECTURE.md) — Architecture, repository layout, asset distribution, and option resolution
 - [DEV.md](DEV.md) — Build, package, test, generation, and contribution workflow
 - [extensions/README.md](extensions/README.md) — Tool and feature extension architecture

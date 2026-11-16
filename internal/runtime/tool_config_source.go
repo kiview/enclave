@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strings"
 
+	"enclave/internal/backend"
 	"enclave/internal/config"
 	"enclave/internal/logx"
 	"enclave/internal/model"
@@ -297,6 +298,11 @@ func (r *Runtime) applyConfigOverrideScope(targetDir string, sourceDir string, p
 }
 
 func (r *Runtime) overlayToolConfigLayer(targetDir string, sourceDir string, allowedPaths []string, deniedPaths []string, deniedAbsolutePaths []string) error {
+	if r.run.Backend == backend.NameSBX {
+		deniedPaths = append(append([]string{}, deniedPaths...), config.HostConfigPassthroughDeniedPaths(r.profile)...)
+		deniedAbsolutePaths = append(append([]string{}, deniedAbsolutePaths...), config.HostConfigPassthroughDeniedAbsolutePaths(r.host.Home, r.profile)...)
+	}
+
 	if strings.TrimSpace(r.profile.SkillsDir) != "" {
 		relativeSkillsDir, err := r.relativePathWithinConfig(r.profile.SkillsDir)
 		if err != nil {

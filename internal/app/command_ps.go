@@ -78,9 +78,11 @@ type psJSONNetwork struct {
 }
 
 func runPS(opts model.Options) int {
-	if err := psCheckDocker(); err != nil {
-		logx.Errorf(err.Error())
-		return 1
+	if opts.Backend != backend.NameSBX {
+		if err := psCheckDocker(); err != nil {
+			logx.Errorf(err.Error())
+			return 1
+		}
 	}
 
 	sessions, err := psSessionList(context.Background(), opts)

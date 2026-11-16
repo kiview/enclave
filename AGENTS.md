@@ -5,8 +5,9 @@ Read `README.md` before making user-facing changes.
 ## Architecture
 
 - See `docs/ARCHITECTURE.md` for the architecture, repository layout, and container assets.
-- Flow: CLI args → profile loading → image/bundle build check → store/auth/network setup → selected backend (`docker` by default, experimental `qemu` for a narrow path).
-- Key packages (all under `internal/`): `app` (orchestration), `runtime` (container execution, mounts, auth injection), `gateway` (network-isolation sidecar), `network` (policy loading and dnsmasq config generation), `config` (profile and path resolution), `model` (shared types).
+- Flow: CLI args → profile loading → image/bundle build check → store/auth/network setup → selected backend (`docker` by default, experimental `qemu` for a narrow path, or native `sbx` with SBX-owned governance).
+- Key packages (all under `internal/`): `app` (orchestration), `runtime` (container execution, mounts, auth injection), `gateway` (network-isolation sidecar), `network` (policy loading and dnsmasq config generation), `config` (profile and path resolution), `model` (shared types), `sbxkit` (native workload policy/credential declarations).
+- Native SBX uses public-only runtime preparation and direct tool execution; do not introduce an inner Docker engine, Enclave gateway, or host-auth-store mounts into that path. SBX owns policy and credential injection.
 - Keep packages under `internal/` focused and avoid unnecessary coupling.
 
 ## Collaboration

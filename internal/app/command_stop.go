@@ -18,7 +18,7 @@ import (
 )
 
 func runStop(opts model.Options, projectDir string) int {
-	if code := requireDocker(); code != 0 {
+	if code := requireBackend(opts); code != 0 {
 		return code
 	}
 
@@ -42,7 +42,7 @@ func runStop(opts model.Options, projectDir string) int {
 	return stopSessions(context.Background(), be, opts, projectDir)
 }
 
-// stopSessions removes the containers a `stop` invocation selects: the single
+// stopSessions stops the sessions a `stop` invocation selects: the single
 // session named by the positional argument, or every background session of the
 // tool, narrowed to the current project's matching sessions when `--name` was
 // given.
@@ -97,6 +97,10 @@ func stopContainer(be backend.Backend, name string) {
 	ref := backend.SessionRef{Name: name}
 	if err := be.Stop(context.Background(), ref, backend.StopOptions{Finalize: true, Timeout: timeout}); err != nil {
 		logx.Warnf("Failed to stop/finalize container %s: %v", name, err)
+	}
+	// Native sandbox home contains SBX-owned credentials and tool state.
+	if be.Name() == backend.NameSBX {
+		return
 	}
 	if remover, ok := be.(backend.UnfinalizedRemover); ok {
 		if err := remover.RemoveWithoutFinalize(context.Background(), ref); err != nil {

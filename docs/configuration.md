@@ -54,7 +54,7 @@ supported under `tool_overrides.<tool>`.
 | `disabled_commands` | Command names that never become `enclave <name>` verbs, whether an installed extension or your own `commands/` tree provides them. The name resolves to nothing rather than to the next provider, so `enclave <name>` fails as an unknown command. Entries are literal names: the `+`/`-`/`none` list syntax does not apply. Built-in verbs cannot be disabled (global config only; see [Host commands](extensions/README.md#host-commands)) |
 | `update_channel` | Release channel binary updates come from: `rolling` (builds of `main`) or `stable` (official releases from version tags). Unset follows the channel the binary was published on, which `enclave config` shows as the default (global config only; see [`self-update`](cli-reference.md)) |
 | `tool` | Default tool (e.g. `claude`, `codex`); unset means the first interactive session asks once and writes the answer here (see [Tool selection](cli-reference.md#tool-selection)) |
-| `backend` | Isolation backend: `auto` (default) uses docker or podman, whichever is installed, and asks once when both are; or `docker`, `podman`, experimental `qemu`. Override per invocation with `--backend` on engine-using commands. |
+| `backend` | Isolation backend: `auto` (default) uses docker or podman, whichever is installed, and asks once when both are; or `docker`, `podman`, experimental `qemu` or native `sbx`. Override per invocation with `--backend` on engine-using commands. |
 | `host_config` | `none` (default) or `passthrough` |
 | `skills_validation` | Shared skill validation: `strict` (default) or `agent`; supports tool overrides |
 | `tool_overrides.<tool>.host_config_paths` | Per-tool passthrough path directives (`default`, `+path`, `-path`, or explicit list) |
@@ -548,3 +548,11 @@ Sessions started with `enclave devcontainer run|shell` cannot be compared.
 Devcontainer mode has no flag, so `config --json` resolves `devcontainer` and
 `features` without it; treat these sessions as unknown. A `devcontainer` key
 set in config is resolved by both sides.
+
+## Native SBX backend
+
+`"backend": "sbx"` selects native Docker Sandboxes execution. Tool/feature
+composition and public configuration remain Enclave-owned; SBX owns policy,
+credential injection, and native session state. Existing SBX policies remain
+authoritative, so Enclave's domain declarations are not a separate security
+boundary. Enclave auth-store settings are not imported. See [SBX](sbx.md).
