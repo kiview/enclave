@@ -117,7 +117,7 @@ func TestNativeKitMergesDeclarationsForOneSBXService(t *testing.T) {
 	for _, injection := range credentials[0].APIKey.Inject {
 		domains = append(domains, injection.Domain)
 	}
-	if !reflect.DeepEqual(domains, []string{"*.githubcopilot.com", "*.githubusercontent.com", "api.github.com"}) {
+	if !reflect.DeepEqual(domains, []string{"**.githubcopilot.com", "**.githubusercontent.com", "api.github.com"}) {
 		t.Fatalf("domains=%v", domains)
 	}
 	if !reflect.DeepEqual(aliases, map[string]string{"GH_TOKEN": "COPILOT_GITHUB_TOKEN", "GITHUB_TOKEN": "COPILOT_GITHUB_TOKEN"}) {
@@ -153,4 +153,33 @@ func nativeCredentials(t *testing.T, raw []byte) []Credential {
 		}
 	}
 	return credentials
+}
+
+func TestNativeKitPreservesEnclaveSubdomainWildcardDepth(t *testing.T) {
+	raw, _, err := Render("copilot", backend.NetworkPolicy{Egress: backend.EgressPolicy{AllowedDomains: []string{"*.githubusercontent.com"}}}, map[string]model.SecretConfig{
+		"copilot-github-token": {EnvVars: []string{"COPILOT_GITHUB_TOKEN"}, Release: githubRelease("Authorization", "api.github.com", "*.githubcopilot.com")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var domains []string
+	for _, injection := range nativeCredentials(t, raw)[0].APIKey.Inject {
+		domains = append(domains, injection.Domain)
+	}
+	if !reflect.DeepEqual(domains, []string{"**.githubcopilot.com", "api.github.com"}) {
+		t.Fatalf("SBX single-label wildcard narrows Enclave scope: %v", domains)
+	}
+	var doc struct {
+		Capabilities []struct {
+			Config struct {
+				Runtime Rules `json:"runtime"`
+			} `json:"config"`
+		} `json:"capabilities"`
+	}
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(doc.Capabilities[1].Config.Runtime.Allow, []string{"**.githubcopilot.com", "**.githubusercontent.com", "api.github.com"}) {
+		t.Fatalf("allow=%v", doc.Capabilities[1].Config.Runtime.Allow)
+	}
 }

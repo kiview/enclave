@@ -60,7 +60,10 @@ Supported Enclave API-key declarations become SBX credential capabilities with
 receives SBX sentinels; SBX releases the credential outside the guest.
 Declarations that map to the same SBX service share one secret and sentinel:
 Copilot and the GitHub CLI feature both use `sbx secret set github`, and the
-token is injected only for the hosts that those declarations list. Enclave
+token is injected only for the hosts that those declarations list. Enclave's
+`*.example.com` patterns become SBX `**.example.com` so that subdomains at
+any depth stay in scope. `--ephemeral` sessions request the same credentials.
+Enclave
 does not read/import host provider environment variables, its env-secret store,
 or existing provider auth files for native sessions. Known credential variables
 cannot be passed with `--pass-env`; use SBX credential management instead.

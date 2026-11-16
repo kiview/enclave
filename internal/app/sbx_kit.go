@@ -88,7 +88,7 @@ func prepareSBXKit(input *CommandInput, opts model.Options, profile model.Profil
 			secrets[name] = secret
 		}
 	}
-	if opts.NoAPIKey || (opts.Ephemeral && !opts.PassAPIKey) {
+	if opts.NoAPIKey {
 		secrets = nil
 	}
 	descriptor, aliases, err := sbxkit.Render(profile.Name, req.Network, secrets)

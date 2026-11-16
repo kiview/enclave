@@ -116,6 +116,9 @@ func TestPrepareSBXKitSupportsCopilotWithGitHubFeature(t *testing.T) {
 	opts := config.DefaultOptions()
 	opts.Tool = "copilot"
 	opts.Features = []string{"github-cli"}
+	// SBX keeps credentials outside the guest, so removal after exit is no
+	// reason to withhold them.
+	opts.Ephemeral = true
 	input := &CommandInput{Ctx: NewAppContext(paths, t.TempDir())}
 	kit, err := prepareSBXKit(input, opts, profile, model.Host{Home: t.TempDir()}, backend.Request{})
 	if err != nil {

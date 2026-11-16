@@ -91,7 +91,11 @@ func Render(tool string, network backend.NetworkPolicy, secrets map[string]model
 		if !ok {
 			return nil, nil, fmt.Errorf("SBX has no service mapping for credential %s; use an SBX custom secret instead", name)
 		}
-		hosts := sortedUnique(release.Hosts)
+		hosts := make([]string, 0, len(release.Hosts))
+		for _, host := range release.Hosts {
+			hosts = append(hosts, nativeHost(host))
+		}
+		hosts = sortedUnique(hosts)
 		if len(hosts) == 0 {
 			return nil, nil, fmt.Errorf("SBX credential %s has no release hosts", name)
 		}
@@ -174,11 +178,20 @@ func sortedUnique(values []string) []string {
 	return result
 }
 
+// Enclave's "*." matches subdomains at any depth; SBX's "*" is one label.
+func nativeHost(host string) string {
+	if strings.HasPrefix(host, "*.") {
+		return "*" + host
+	}
+	return host
+}
+
 // Enclave domain rules include the apex and every subdomain. SBX bare hosts
 // are exact matches, so preserve the declaration's scope explicitly.
 func nativeDomains(domains []string) []string {
 	var result []string
 	for _, domain := range domains {
+		domain = nativeHost(domain)
 		result = append(result, domain)
 		if domain != "localhost" && net.ParseIP(domain) == nil && !strings.ContainsAny(domain, "*:[]") {
 			result = append(result, "**."+domain)
