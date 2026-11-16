@@ -102,3 +102,39 @@ func TestPrepareSBXKitComposesPublicNativeArtifactWithoutDocker(t *testing.T) {
 		t.Fatalf("identical inputs produced distinct artifacts: %s and %s", kit, again)
 	}
 }
+
+func TestPrepareSBXKitSupportsCopilotWithGitHubFeature(t *testing.T) {
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := model.Paths{AppRoot: root, Dockerfile: filepath.Join(root, "Dockerfile"), ExtensionsDir: filepath.Join(root, "extensions"), ToolsDir: filepath.Join(root, "extensions/tools"), FeaturesDir: filepath.Join(root, "extensions/features")}
+	profile, err := config.LoadProfile(paths, "copilot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := config.DefaultOptions()
+	opts.Tool = "copilot"
+	opts.Features = []string{"github-cli"}
+	input := &CommandInput{Ctx: NewAppContext(paths, t.TempDir())}
+	kit, err := prepareSBXKit(input, opts, profile, model.Host{Home: t.TempDir()}, backend.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	descriptor, err := os.ReadFile(filepath.Join(kit, "enclave.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(descriptor), "service: github") != 1 || !strings.Contains(string(descriptor), "name: COPILOT_GITHUB_TOKEN") {
+		t.Fatalf("Copilot and GitHub CLI must share one SBX github credential: %s", descriptor)
+	}
+	wrapper, err := os.ReadFile(filepath.Join(kit, "native-env.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, alias := range []string{"GH_TOKEN", "GITHUB_TOKEN"} {
+		if !strings.Contains(string(wrapper), "export "+alias+"=\"$COPILOT_GITHUB_TOKEN\"") {
+			t.Fatalf("missing %s sentinel alias: %s", alias, wrapper)
+		}
+	}
+}

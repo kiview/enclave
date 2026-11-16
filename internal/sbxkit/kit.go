@@ -69,6 +69,10 @@ func Render(tool string, network backend.NetworkPolicy, secrets map[string]model
 	}
 	sort.Strings(names)
 	aliases := map[string]string{}
+	// SBX resolves one secret per service, so declarations sharing a service
+	// share its sentinel and inject it into the union of their hosts.
+	keys := map[string]*APIKey{}
+	var services []string
 	for _, name := range names {
 		secret := secrets[name]
 		// OAuth/file authentication is owned by SBX; Enclave does not import it
@@ -87,23 +91,37 @@ func Render(tool string, network backend.NetworkPolicy, secrets map[string]model
 		if !ok {
 			return nil, nil, fmt.Errorf("SBX has no service mapping for credential %s; use an SBX custom secret instead", name)
 		}
-		primary := secret.EnvVars[0]
-		key := APIKey{Name: primary, ProxyManaged: true}
-		for _, host := range sortedUnique(release.Hosts) {
-			format := release.Format
-			if format == "" {
-				format = "%s"
-			}
-			key.Inject = append(key.Inject, Injection{Domain: host, Header: release.Header, Format: format})
-			rules.Allow = append(rules.Allow, host)
-		}
-		if len(key.Inject) == 0 {
+		hosts := sortedUnique(release.Hosts)
+		if len(hosts) == 0 {
 			return nil, nil, fmt.Errorf("SBX credential %s has no release hosts", name)
 		}
-		d.Capabilities = append(d.Capabilities, Capability{Type: "com.docker.sandbox/credential@1", Optional: true, Config: Credential{Service: service, Phase: "runtime", APIKey: key}})
-		for _, alias := range secret.EnvVars[1:] {
-			aliases[alias] = primary
+		key, exists := keys[service]
+		if !exists {
+			key = &APIKey{Name: secret.EnvVars[0], ProxyManaged: true}
+			keys[service] = key
+			services = append(services, service)
 		}
+		format := release.Format
+		if format == "" {
+			format = "%s"
+		}
+		for _, host := range hosts {
+			injection := Injection{Domain: host, Header: release.Header, Format: format}
+			if err := addInjection(key, injection); err != nil {
+				return nil, nil, fmt.Errorf("SBX credential %s: %w", name, err)
+			}
+			rules.Allow = append(rules.Allow, host)
+		}
+		for _, alias := range secret.EnvVars {
+			if alias != key.Name {
+				aliases[alias] = key.Name
+			}
+		}
+	}
+	for _, service := range services {
+		key := keys[service]
+		sort.Slice(key.Inject, func(i, j int) bool { return key.Inject[i].Domain < key.Inject[j].Domain })
+		d.Capabilities = append(d.Capabilities, Capability{Type: "com.docker.sandbox/credential@1", Optional: true, Config: Credential{Service: service, Phase: "runtime", APIKey: *key}})
 	}
 	rules.Allow = sortedUnique(rules.Allow)
 	d.Capabilities[1].Config = Network{Runtime: rules}
@@ -114,8 +132,22 @@ func Render(tool string, network backend.NetworkPolicy, secrets map[string]model
 	return append([]byte("# syntax=docker/sandbox-kit:3\n"), raw...), aliases, nil
 }
 
+func addInjection(key *APIKey, injection Injection) error {
+	for _, existing := range key.Inject {
+		if existing.Domain != injection.Domain {
+			continue
+		}
+		if !strings.EqualFold(existing.Header, injection.Header) || existing.Format != injection.Format {
+			return fmt.Errorf("conflicting injection rules for %s", injection.Domain)
+		}
+		return nil
+	}
+	key.Inject = append(key.Inject, injection)
+	return nil
+}
+
 func serviceFor(name string, env []string) (string, bool) {
-	byEnv := map[string]string{"ANTHROPIC_API_KEY": "anthropic", "OPENAI_API_KEY": "openai", "CODEX_API_KEY": "openai", "GH_TOKEN": "github", "GITHUB_TOKEN": "github", "GEMINI_API_KEY": "google", "GOOGLE_API_KEY": "google", "GROQ_API_KEY": "groq", "MISTRAL_API_KEY": "mistral", "NEBIUS_API_KEY": "nebius", "OPENROUTER_API_KEY": "openrouter", "XAI_API_KEY": "xai"}
+	byEnv := map[string]string{"ANTHROPIC_API_KEY": "anthropic", "OPENAI_API_KEY": "openai", "CODEX_API_KEY": "openai", "COPILOT_GITHUB_TOKEN": "github", "GH_TOKEN": "github", "GITHUB_TOKEN": "github", "GEMINI_API_KEY": "google", "GOOGLE_API_KEY": "google", "GROQ_API_KEY": "groq", "MISTRAL_API_KEY": "mistral", "NEBIUS_API_KEY": "nebius", "OPENROUTER_API_KEY": "openrouter", "XAI_API_KEY": "xai"}
 	for _, key := range env {
 		if service, ok := byEnv[key]; ok {
 			return service, true

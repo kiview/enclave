@@ -80,3 +80,77 @@ func TestNativeKitRejectsUntranslatableCredentialDeclaration(t *testing.T) {
 		t.Fatal("silently accepted unknown credential mapping")
 	}
 }
+
+func githubRelease(header string, hosts ...string) *model.SecretReleaseConfig {
+	return &model.SecretReleaseConfig{HTTP: &model.HTTPSecretReleaseConfig{Hosts: hosts, Header: header, Format: "Bearer %s"}}
+}
+
+func TestNativeKitMapsCopilotTokenToSBXGitHubService(t *testing.T) {
+	raw, aliases, err := Render("copilot", backend.NetworkPolicy{}, map[string]model.SecretConfig{
+		"copilot-github-token": {EnvVars: []string{"COPILOT_GITHUB_TOKEN"}, Release: githubRelease("Authorization", "api.github.com", "*.githubcopilot.com")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	credentials := nativeCredentials(t, raw)
+	if len(credentials) != 1 || credentials[0].Service != "github" || credentials[0].APIKey.Name != "COPILOT_GITHUB_TOKEN" || !credentials[0].APIKey.ProxyManaged {
+		t.Fatalf("credentials=%+v", credentials)
+	}
+	if len(aliases) != 0 {
+		t.Fatalf("aliases=%v", aliases)
+	}
+}
+
+func TestNativeKitMergesDeclarationsForOneSBXService(t *testing.T) {
+	raw, aliases, err := Render("copilot", backend.NetworkPolicy{}, map[string]model.SecretConfig{
+		"copilot-github-token": {EnvVars: []string{"COPILOT_GITHUB_TOKEN"}, Release: githubRelease("Authorization", "api.github.com", "*.githubcopilot.com")},
+		"github-token":         {EnvVars: []string{"GH_TOKEN", "GITHUB_TOKEN"}, Release: githubRelease("authorization", "api.github.com", "*.githubusercontent.com")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	credentials := nativeCredentials(t, raw)
+	if len(credentials) != 1 || credentials[0].Service != "github" || credentials[0].APIKey.Name != "COPILOT_GITHUB_TOKEN" {
+		t.Fatalf("credentials=%+v", credentials)
+	}
+	var domains []string
+	for _, injection := range credentials[0].APIKey.Inject {
+		domains = append(domains, injection.Domain)
+	}
+	if !reflect.DeepEqual(domains, []string{"*.githubcopilot.com", "*.githubusercontent.com", "api.github.com"}) {
+		t.Fatalf("domains=%v", domains)
+	}
+	if !reflect.DeepEqual(aliases, map[string]string{"GH_TOKEN": "COPILOT_GITHUB_TOKEN", "GITHUB_TOKEN": "COPILOT_GITHUB_TOKEN"}) {
+		t.Fatalf("aliases=%v", aliases)
+	}
+}
+
+func TestNativeKitRejectsConflictingInjectionForOneSBXService(t *testing.T) {
+	_, _, err := Render("copilot", backend.NetworkPolicy{}, map[string]model.SecretConfig{
+		"copilot-github-token": {EnvVars: []string{"COPILOT_GITHUB_TOKEN"}, Release: githubRelease("Authorization", "api.github.com")},
+		"github-token":         {EnvVars: []string{"GH_TOKEN"}, Release: githubRelease("X-Token", "api.github.com")},
+	})
+	if err == nil || !strings.Contains(err.Error(), "conflicting injection rules for api.github.com") {
+		t.Fatalf("accepted conflicting injection rules for one domain: %v", err)
+	}
+}
+
+func nativeCredentials(t *testing.T, raw []byte) []Credential {
+	t.Helper()
+	var doc struct {
+		Capabilities []struct {
+			Type   string     `json:"type"`
+			Config Credential `json:"config"`
+		} `json:"capabilities"`
+	}
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	var credentials []Credential
+	for _, capability := range doc.Capabilities {
+		if capability.Type == "com.docker.sandbox/credential@1" {
+			credentials = append(credentials, capability.Config)
+		}
+	}
+	return credentials
+}
